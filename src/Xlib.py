@@ -46,12 +46,7 @@ class InputFile():
 
 class TabFile(InputFile):
     def __init__(self, filename):
-        if "\\ui" in Constants.PATH:
-            PATH = Constants.PATH.replace("\\src\\ui", "\\Dataset\\" )
-   #         print("Gui")
-        else:
-            PATH = Constants.PATH.replace("\\src", "\\Dataset\\")
-    #        print("Jupyter")
+        PATH = Constants.PATH.replace("\\src", "\\Dataset\\")
         super().__init__(PATH + str(filename.split(".")[0] + ".csv"))
         self.name = filename.split(".")[0]
         self.dictTabModel = {}
@@ -138,15 +133,7 @@ class ImgFile(InputFile):
 
     def __init__(self, filename = None, dataset = None):
         super().__init__(filename)
-   #     filename = 1
-     #   dataset = "mnist"
         self.__initialization(filename,dataset)
-   #     self.play("DeepExplainer")
-     #   self.explainLocal("saliency", display=True)
-    #    self.display("saliency")
-    #    self.play("DeepExplainer")
-    #    self.explainLocal("grad*input", display=True)
-    #    self.display("grad*input")
 
     def display(self,ex,bb= "CNN"):
         explainer = self.dictImgDisplay[ex]
