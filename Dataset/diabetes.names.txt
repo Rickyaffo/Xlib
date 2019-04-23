@@ -1,0 +1,9 @@
+Pregnancies,integer,continuous
+Glucose,integer,continuous
+BloodPressure,integer,continuous
+SkinThickness,integer,continuous
+Insulin,integer,continuous
+BMI,integer,continuous
+DiabetesPedigreeFunction,integer,continuous
+Age,integer,continuous
+class,string,class
