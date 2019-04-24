@@ -2,4 +2,6 @@
 
 Project Black Box Models
 
-XLib (eXplanation Library) is a framework to enable Model Interpretation for all forms of model to help one build an Interpretable machine learning system often needed for real world use-cases. It is a python library designed to demystify the learned structures of a black box model both globally(inference on the basis of a complete data set) and locally(inference about an individual prediction) using different approach(explainer).
+ To support developers, researchers and practitioners,  Xlib have to allow easy and standardized access to a wide variety of algorithms integrated into a common framework, to evaluate, compare and visualize the results they provide.
+ 
+ In src/Ui there are some tutorial to the use of the framework with Jupyter.
