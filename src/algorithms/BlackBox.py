@@ -9,12 +9,8 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.svm import SVC
 from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import RandomizedSearchCV
-import keras
-from keras.models import model_from_json
-from keras.models import Sequential
-from keras.layers import Dense, Dropout, Flatten, Activation
-from keras.layers import Conv2D, MaxPooling2D
-from datamodel.DataModel import Tab,Img
+
+from datamodel.DataModel import Tab
 
 class BlackBox:
     def start(self, datamodel):
@@ -96,35 +92,3 @@ class RandomForest(BlackBox):
         # Use the random grid to search for best hyperparameters
         # First create the base model to tune
         self.bb = RandomForestClassifier(random_state=seed)
-
-class CNN(BlackBox):
-
-    #function that uses keras.evaluate
-    def evaluate(self,model):
-        score = model.cls.evaluate(model.x_test, model.y_test, verbose=0)
-        print('Test loss:', score[0])
-        print('Test accuracy:', score[1])
-
-    def __init__(self,model):
-        num_classes = 10
-        epochs = 3
-        batch_size = 128
-        self.cls = Sequential()
-        self.cls.add(Conv2D(32, kernel_size=(3, 3),
-                         activation='relu',
-                         input_shape=model.input_shape))
-        self.cls.add(Conv2D(64, (3, 3), activation='relu'))
-        self.cls.add(MaxPooling2D(pool_size=(2, 2)))
-        self.cls.add(Dropout(0.25))
-        self.cls.add(Flatten())
-        self.cls.add(Dense(128, activation='relu'))
-        self.cls.add(Dropout(0.5))
-        self.cls.add(Dense(num_classes))
-        self.cls.add(Activation('softmax'))
-        self.cls.fit(model.x_train, model.y_train,
-                     batch_size=batch_size,
-                     epochs=epochs,
-                     verbose=1,
-                     validation_data=(model.x_test, model.y_test))
-
-

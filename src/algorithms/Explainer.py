@@ -9,17 +9,16 @@ import cv2,time,warnings
 import numpy as np
 
 import lime.lime_tabular
-from deepexplain.tensorflow import DeepExplain
+
 from LOREM.code.realise import REALISE
 from LOREM.code.lorem import LOREM
 from LOREM.code.util import neuclidean, multilabel2str
 from anchor import anchor_tabular
-import saliency
-from lime import lime_image
+
 from skater.core.explanations import Interpretation
 from skater.model import InMemoryModel
 
-import tensorflow as tf
+
 from sklearn.model_selection import train_test_split
 warnings.filterwarnings("ignore")
 
@@ -284,114 +283,6 @@ class Lore(Explainer):
         print('e = {\n\tr = %s\n\tc = %s    \n}' % (self.properties.Rules, self.properties.CounterFactuals))
         model.toPredict(self.row, self.properties.target)
         super().displayTab()
-
-class DeepExplainer(Explainer):
-
-    def explainImg(self,img,display,methodD,methodS):
-        self.newProperties()
-        t0 = time.clock()
-        c = False
-        if (self.filename == "mnist" or self.filename == "faces" ):
-            self.properties.Xi = img.xi.reshape(img.im.shape[0], img.im.shape[1])
-            c = True
-        with DeepExplain(session=img.session) as de:
-            if (methodD == "grad*input"):
-                attributions = {'Gradient * Input': de.explain('grad*input',img.logits * img.yi if c else tf.reduce_max(img.logits, 1), img.X, img.xi)}
-            elif (methodD == 'saliency'):
-                attributions = { 'Saliency maps': de.explain('saliency', img.logits * img.yi if c else tf.reduce_max(img.logits, 1), img.X, img.xi)}
-            elif (methodD == 'intgrad'):
-                attributions = { 'Integrated Gradients': de.explain('intgrad', img.logits * img.yi if c else tf.reduce_max(img.logits, 1), img.X, img.xi)}
-            elif (methodD == 'elrp'):
-                attributions = { 'Epsilon-LRP': de.explain('elrp', img.logits * img.yi if c else tf.reduce_max(img.logits, 1), img.X, img.xi)}
-            elif (methodD == 'deeplift'):
-                attributions = { 'DeepLIFT (Rescale)': de.explain('deeplift', img.logits * img.yi if c else tf.reduce_max(img.logits, 1), img.X, img.xi)}
-            elif (methodD == 'occlusion'):
-                attributions = { '_Occlusion [1x1]': de.explain('occlusion', img.logits * img.yi if c else tf.reduce_max(img.logits, 1), img.X, img.xi)}
-            else:
-                print("Explainer wrong.")
-                return
-            print('Done')
-        t = time.clock() - t0
-        self.setImgExplained(img.im)
-        for a,b in enumerate(attributions):
-            explanation = attributions[b][0]
-            title = b
-        self.insertPropertiesImg(img2show=explanation, mask="", title=title, time=t, c='g', exp='DeepExplainer',
-                                 label=methodD,
-                                 shape1=img.SHAPE1, shape2=img.SHAPE2)
-        if (display):
-            self.display(img)
-        return self.properties
-
-    def display(self,img):
-        super().displayImg()
-
-class Saliency(Explainer):
-
-    def explain(self,img,**kwargs):
-        print("Prediction class: " + str(img.prediction_class))
-        return super().explain(img,**kwargs)
-
-    def display(self,img):
-        super().displayImg()
-
-    def explainImg(self,img,display,methodD,methodS):
-        self.newProperties()
-        t0 = time.clock()
-        if (methodS == "Vanilla Gradient"):
-            gradient_saliency = saliency.GradientSaliency(img.graph, img.session, img.y, img.processed_images)
-            vanilla_mask_3d = gradient_saliency.GetMask(img.im, feed_dict={img.neuron_selector: img.prediction_class})
-            smoothgrad_mask_3d = gradient_saliency.GetSmoothedMask(img.im,
-                                                                   feed_dict={img.neuron_selector: img.prediction_class})
-            explanation = saliency.VisualizeImageGrayscale(vanilla_mask_3d)
-            title = 'Vanilla Gradient'
-            explanation_smoothed = saliency.VisualizeImageGrayscale(smoothgrad_mask_3d)
-            title_smoothed = 'SmoothGrad'
-        elif (methodS == 'Guided Backprop'):
-            guided_backprop = saliency.GuidedBackprop(img.graph, img.session, img.y, img.processed_images)
-            vanilla_guided_backprop_mask_3d = guided_backprop.GetMask(
-                img.im, feed_dict={img.neuron_selector: img.prediction_class})
-            smoothgrad_guided_backprop_mask_3d = guided_backprop.GetSmoothedMask(
-                img.im, feed_dict={img.neuron_selector: img.prediction_class})
-            explanation = saliency.VisualizeImageGrayscale(smoothgrad_guided_backprop_mask_3d)
-            title = 'Vanilla Guided Backprop'
-            explanation_smoothed = saliency.VisualizeImageGrayscale(vanilla_guided_backprop_mask_3d)
-            title_smoothed = 'SmoothGrad Guided Backprop'
-        elif (methodS == 'Integrated Gradients'):
-            baseline = saliency.np.zeros(img.im.shape)
-            baseline.fill(-1)
-            integrated_gradients = saliency.IntegratedGradients(img.graph, img.session, img.y, img.processed_images)
-            vanilla_integrated_gradients_mask_3d = integrated_gradients.GetMask(
-                img.im, feed_dict={img.neuron_selector: img.prediction_class}, x_steps=25, x_baseline=baseline)
-            smoothgrad_integrated_gradients_mask_3d = integrated_gradients.GetSmoothedMask(
-                img.im, feed_dict={img.neuron_selector: img.prediction_class}, x_steps=25, x_baseline=baseline)
-            explanation = saliency.VisualizeImageGrayscale(vanilla_integrated_gradients_mask_3d)
-            title = 'Vanilla Integrated Gradients'
-            explanation_smoothed = saliency.VisualizeImageGrayscale(smoothgrad_integrated_gradients_mask_3d)
-            title_smoothed = 'Smoothgrad Integrated Gradients'
-        elif (methodS == 'Occlusion'):
-            occlusion_gradients = saliency.Occlusion(img.graph, img.session, img.y, img.processed_images)
-            vanilla_occlusion_gradients_mask_3d = occlusion_gradients.GetMask(
-                img.im, feed_dict={img.neuron_selector: img.prediction_class})
-            smoothgrad_occlusion_gradients_mask_3d = occlusion_gradients.GetSmoothedMask(
-                img.im, feed_dict={img.neuron_selector: img.prediction_class})
-            explanation = saliency.VisualizeImageGrayscale(vanilla_occlusion_gradients_mask_3d)
-            title = 'Vanilla Occlusion'
-            explanation_smoothed = saliency.VisualizeImageGrayscale(smoothgrad_occlusion_gradients_mask_3d)
-            title_smoothed = 'Smoothgrad Occlusion'
-        else:
-            print("Explainer wrong.")
-            return
-        t = time.clock() - t0
-        self.setImgExplained(img.im)
-        self.insertPropertiesImg(img2show=explanation, mask="", title=title, time=t, c='g', exp='Saliency',
-                                 label=methodS,shape1=img.SHAPE1, shape2=img.SHAPE2)
-        self.rulesImages[0][0].append(explanation_smoothed)
-        self.rulesImages[0][1].append("")
-        self.rulesImages[0][2].append(title_smoothed)
-        if (display):
-            self.display(img)
-        return self.properties
 
 class Ext(Explainer):
     def explain(self,model,**kwargs):

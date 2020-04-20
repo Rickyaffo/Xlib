@@ -3,25 +3,21 @@ from algorithms import BlackBox
 import tempfile, sys, os,glob
 from collections import defaultdict
 from sklearn_pandas import CategoricalImputer
-#from tf_models.slim.nets import inception
-from preprocessing import inception_preprocessing
-from keras.applications import inception_v3 as kerasinception_v3
+
 from datasets import imagenet
 from tensorflow.examples.tutorials.mnist import input_data
 import pandas as pd
 import cv2
-import tensorflow as tf
+
 import numpy as np
 from utility import Constants
 from utility.Utility import printPrediction
-from datamodel.DataModel import Tab,Img,train_test_split
-from deepexplain.tensorflow import DeepExplain
+from datamodel.DataModel import Tab,train_test_split
+
 from lime.wrappers.scikit_image import SegmentationAlgorithm
 from scipy.misc import imread
 import json
-from keras import backend as K
-from nets import inception_v3
-from tensorflow.contrib.slim.python.slim.nets import inception
+
 
 def get_features(metadata):
     """
@@ -294,194 +290,3 @@ def sklearn_metadata(f, fi, fb, n, t):
                 idx_fb += 1
         i += 1
     return res
-
-
-#SIDE OF IMAGE PREPROCESSING
-
-def prepareImage(name,PATH,SHAPE_1,SHAPE_2,dataset,X_vec,y_vec,explainer,label):
-    def LoadImage(file_path,SHAPE_1,SHAPE_2):
-        im = cv2.imread(file_path)
-        im = cv2.resize(im, (SHAPE_1 , SHAPE_2), 3)
-        return im / 127.5 - 1.0
-    PATH = PATH + ("images/")
-    slim = tf.contrib.slim
-    session = tf.Session(config=tf.ConfigProto(log_device_placement=True))
-    graph = tf.Graph()
-    processed_images = tf.placeholder(tf.float32, shape=(None, SHAPE_1, SHAPE_2, 3))
-    checkpoints_dir = PATH.replace("images/", "models/")
-    img = Img()
-    img.name = name
-    img.label = label
-    if (dataset == "mnist" or dataset == "faces"):
-        if (dataset == "faces"):
-            X_train, X_test, y_train, y_test = train_test_split(X_vec, y_vec,
-                                                                train_size=0.70)
-            img.segmenter = SegmentationAlgorithm('slic', n_segments=100, compactness=1, sigma=1)
-        else:
-            X_train, X_test, y_train, y_test = train_test_split(X_vec, y_vec,
-                                                                train_size=0.55)
-            img.segmenter = SegmentationAlgorithm('quickshift', kernel_size=1, max_dist=200, ratio=0.2)
-        img.x = y_test[name]
-        img.im = X_test[name]
-    else:
-        im = LoadImage(PATH + name,SHAPE_1,SHAPE_2)
-  #      print("Label: {}".format(img.label))
-    if (isinstance(explainer, ex.Lime)):
-        if (dataset == "mnist" or dataset== "faces"):
-            img.set_pipiline()
-            img.simple_rf_pipeline.fit(X_train, y_train)
-            img.predict_fn = img.simple_rf_pipeline.predict_proba
-        else:
-            def transform_img_fn(path_list,SHAPE_1,SHAPE_2):
-                out = []
-                for f in path_list:
-                    with open(f, 'rb') as t:
-                        contents = t.read()
-                    image_raw = tf.image.decode_jpeg(contents, channels=3)
-                    image = inception_preprocessing.preprocess_image(image_raw, SHAPE_1, SHAPE_2,
-                                                                     is_training=False)
-                out.append(image)
-                return session.run([out])[0]
-            names = imagenet.create_readable_names_for_imagenet_labels()
-            with slim.arg_scope(inception.inception_v3_arg_scope()):
-                logits, _ = inception.inception_v3(processed_images, reuse=tf.AUTO_REUSE, num_classes=1001,
-                                                       is_training=False)
-            probabilities = tf.nn.softmax(logits)
-            init_fn = slim.assign_from_checkpoint_fn(
-                os.path.join(checkpoints_dir, 'inception_v3.ckpt'),
-                slim.get_model_variables('InceptionV3'))
-            session = tf.Session(config=tf.ConfigProto(log_device_placement=True))
-            init_fn(session)
-            bb = kerasinception_v3.InceptionV3()
-            images = transform_img_fn([PATH + name],SHAPE_1,SHAPE_2)
-            img.definition(bb, session, images, processed_images, probabilities, names)
-            img.x = printPrediction(img,True)
-            tf.reset_default_graph()
-            K.clear_session()
-    elif (isinstance(explainer, ex.Lore)):
-        imlist = list()
-        i = 0;
-        row = None
-        for filename in sorted(glob.glob(PATH + '*.JPEG')):
-            if (name == filename.split("\\")[1]):
-                row = i
-                image = cv2.imread(filename)
-                imlist.append(image)
-            i += 1
-        if (row is None):
-            print("File not Found")
-            return
-        class_map = json.load(open(PATH + 'imagenet_class_index.json'))
-        class_map = {int(k): v for k, v in class_map.items()}
-        inv_class_map = {v[0]: k for k, v in class_map.items()}
-        class_values = [''] * len(class_map)
-        for k, v in class_map.items():
-            class_values[k] = v[1]
-        class_name = 'class'
-        bb = kerasinception_v3.InceptionV3()
-        img.definition(bb, inv_class_map, class_values, class_name, imlist[row], imlist, row)
-    elif (isinstance(explainer, ex.DeepExplainer)):
-        if (dataset == "mnist" or dataset == "faces"):
-            if (dataset == "mnist"):
-                sys.path.insert(0, os.path.abspath('..'))
-                tmp_dir = tempfile.gettempdir()
-                mnist = input_data.read_data_sets(tmp_dir, one_hot=True)
-                n_hidden_1 = 256  # 1st layer number of neurons
-                n_hidden_2 = 256  # 2nd layer number of neurons
-                num_input =  SHAPE_1 * SHAPE_2  # MNIST data input (img shape: 28*28)
-                num_classes = 10  # MNIST total classes (0-9 digits)
-                X = tf.placeholder("float", [None, num_input])
-                weights = {
-                    'h1': tf.Variable(tf.random_normal([num_input, n_hidden_1], mean=0.0, stddev=0.05)),
-                    'h2': tf.Variable(tf.random_normal([n_hidden_1, n_hidden_2], mean=0.0, stddev=0.05)),
-                    'out': tf.Variable(tf.random_normal([n_hidden_2, num_classes], mean=0.0, stddev=0.05))
-                }
-                biases = {
-                    'b1': tf.Variable(tf.zeros([n_hidden_1])),
-                    'b2': tf.Variable(tf.zeros([n_hidden_2])),
-                    'out': tf.Variable(tf.zeros([num_classes]))
-                }
-
-                def model(x, act=tf.nn.relu):
-                    layer_1 = act(tf.add(tf.matmul(x, weights['h1']), biases['b1']))
-                    layer_2 = act(tf.add(tf.matmul(layer_1, weights['h2']), biases['b2']))
-                    out_layer = tf.matmul(layer_2, weights['out']) + biases['out']
-                    return out_layer
-                logits = model(X)
-                init = tf.global_variables_initializer()
-                session.run(init)
-                def input_transform(x):
-                    return (x - 0.5) * 2
-                test_x = input_transform(mnist.test.images)
-                test_y = mnist.test.labels
-                xi = test_x[[name]]
-                img.im = test_x[name].reshape(SHAPE_1,SHAPE_2)
-                yi = test_y[name]
-                img.definition(session,logits, yi, X, xi)
-        else:
-            with DeepExplain(session=session, graph=session.graph) as de:
-                with slim.arg_scope(inception.inception_v3_arg_scope()):
-                    _, end_points = inception.inception_v3(processed_images, reuse=tf.AUTO_REUSE,num_classes=1001, is_training=False)
-                logits = end_points['Logits']
-                yi = tf.argmax(logits, 1)
-                saver = tf.train.Saver(slim.get_model_variables())
-                saver.restore(session, checkpoints_dir + "inception_v3.ckpt")
-                filenames, xs = load_images(PATH,name,SHAPE_1,SHAPE_2)
-                labels = session.run(yi, feed_dict={processed_images: xs})
-                img.definition(end_points,session, xs, labels,logits,processed_images,im)
-    elif (isinstance(explainer, ex.Saliency)):
-        if (dataset == "mnist" or dataset == "faces"):
-    #        im = np.stack((img.im,)*3, axis=-1)
-            im = img.im
-            with graph.as_default():
-                processed_images = tf.placeholder(tf.float32, shape=(None, SHAPE_1, SHAPE_2, 3))
-                with slim.arg_scope(inception.inception_v3_arg_scope()):
-                    _, end_points = inception.inception_v3(processed_images,reuse=tf.AUTO_REUSE, is_training=False, num_classes=1001)
-                    # Restore the checkpoint
-                    sess = tf.Session(graph=graph)
-                    saver = tf.train.Saver()
-                    saver.restore(sess, checkpoints_dir + "inception_v3.ckpt")
-                # Construct the scalar neuron tensor.
-                logits = graph.get_tensor_by_name('InceptionV3/Logits/SpatialSqueeze:0')
-                neuron_selector = tf.placeholder(tf.int32)
-                y = logits[0][neuron_selector]
-                # Construct tensor for predictions.
-                prediction = tf.argmax(logits, 1)
-        else:
-            with graph.as_default():
-                processed_images = tf.placeholder(tf.float32, shape=(None, 299, 299, 3))
-                with slim.arg_scope(inception_v3.inception_v3_arg_scope()):
-                    _, end_points = inception_v3.inception_v3(processed_images, is_training=False, num_classes=1001)
-                    # Restore the checkpoint
-                    sess = tf.Session(graph=graph)
-                    saver = tf.train.Saver()
-                    saver.restore(sess, checkpoints_dir + "inception_v3.ckpt")
-                # Construct the scalar neuron tensor.
-                logits = graph.get_tensor_by_name('InceptionV3/Logits/SpatialSqueeze:0')
-                neuron_selector = tf.placeholder(tf.int32)
-                y = logits[0][neuron_selector]
-                # Construct tensor for predictions.
-                prediction = tf.argmax(logits, 1)
-                # Load the image
-        img.definition(sess, processed_images, graph, neuron_selector, logits, im, prediction, y)
-    img.SHAPE1 = SHAPE_1
-    img.SHAPE2 = SHAPE_2
-    return img
-
-def load_images(PATH,name,SHAPE_1,SHAPE_2):
-    images = np.zeros((1, SHAPE_1 , SHAPE_2, 3))
-    filenames = []
-    idx = 0
-    for filepath in tf.gfile.Glob(os.path.join(PATH, '*.JPEG')):
-        if(filepath == name):
-            with tf.gfile.Open(filepath, 'rb') as f:
-                image = imread(f, mode='RGB').astype(np.float) / 255.0
-            # Images for inception classifier are normalized to be in [-1, 1] interval.
-            images[idx, :, :, :] = image * 2.0 - 1.0
-            filenames.append(os.path.basename(filepath))
-            idx += 1
-    return filenames, images
-
-
-
-
